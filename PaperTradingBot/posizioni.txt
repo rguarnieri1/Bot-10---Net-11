@@ -1,0 +1,15 @@
+[2026-08-26 08:30:23Z] APERTA SOL_USDT | prezzo 97,1500 | size 20,00 USD | qty 0,205867 | SL 94,2355 | TP 111,7225 (registrata a posteriori: posizione gia' aperta prima dell'introduzione del log su file)
+[2026-08-26 11:00:07Z] APERTA ETH_USDT | prezzo 2469,1800 | size 16,00 USD | qty 0,006480 | SL 2395,1046 | TP 2932,1513
+[2026-08-26 11:00:08Z] APERTA ADA_USDT | prezzo 0,2119 | size 20,01 USD | qty 94,459123 | SL 0,2055 | TP 0,2436
+[2026-08-26 14:48:31Z] CHIUSA ADA_USDT | entry 0,2119 -> exit 0,2054 | PnL -0,61 USD (-3,06%) | motivo: StopLoss
+[2026-08-27 06:40:17Z] APERTA BTC_USDT | prezzo 78769,9300 | size 12,68 USD | qty 0,000161 | SL 76406,8321 | TP 97409,9048
+[2026-08-27 06:47:37Z] APERTA ADA_USDT | prezzo 0,2101 | size 20,07 USD | qty 95,565175 | SL 0,2038 | TP 0,2415
+[2026-08-28 15:00:54Z] APERTA XRP_USDT | prezzo 1,4347 | size 20,32 USD | qty 14,161755 | commissione 0,0813 USD | SL 1,3917 | TP 1,6589
+[2026-08-29 10:16:29Z] CHIUSA ADA_USDT | entry 0,2101 -> exit 0,2005 | PnL netto -1,0734 USD (-5,33%) | commissioni 0,1569 USD | motivo: StopLoss
+[2026-08-29 10:16:29Z] CHIUSA XRP_USDT | entry 1,4347 -> exit 1,3857 | PnL netto -0,8537 USD (-4,18%) | commissioni 0,1598 USD | motivo: StopLoss
+[2026-08-30 10:47:39Z] APERTA ADA_USDT | prezzo 0,2016 | size 19,75 USD | qty 97,949879 | commissione 0,0790 USD | SL 0,1956 | TP 0,2340
+[2026-08-30 12:12:40Z] APERTA XRP_USDT | prezzo 1,4001 | size 19,82 USD | qty 14,158893 | commissione 0,0793 USD | SL 1,3581 | TP 1,6241
+[2026-08-30 23:24:03Z] CHIUSA ADA_USDT | entry 0,2016 -> exit 0,1953 | PnL netto -0,7765 USD (-3,92%) | commissioni 0,1555 USD | motivo: StopLoss
+[2026-08-30 23:36:35Z] CHIUSA XRP_USDT | entry 1,4001 -> exit 1,3570 | PnL netto -0,7664 USD (-3,85%) | commissioni 0,1561 USD | motivo: StopLoss
+[2026-08-31 07:02:19Z] APERTA ADA_USDT | prezzo 0,1958 | size 19,32 USD | qty 98,671849 | commissione 0,0773 USD | SL 0,1900 | TP 0,2279
+[2026-08-31 07:15:56Z] APERTA XRP_USDT | prezzo 1,3676 | size 19,31 USD | qty 14,116501 | commissione 0,0772 USD | SL 1,3266 | TP 1,5920

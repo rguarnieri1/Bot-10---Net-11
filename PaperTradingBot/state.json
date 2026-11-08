@@ -1,0 +1,120 @@
+{
+  "CashUsd": 8.262458043623808190105592651,
+  "OpenPositions": {
+    "SOL_USDT": {
+      "Instrument": "SOL_USDT",
+      "EntryPrice": 97.15,
+      "Quantity": 0.2058672156459083890890375708,
+      "CostUsd": 20.08,
+      "OpenFeeUsd": 0.08,
+      "OpenedAt": "2026-08-26T08:30:23.5089707+00:00",
+      "StopLossPrice": 94.2355,
+      "TakeProfitPrice": 112.5614
+    },
+    "ETH_USDT": {
+      "Instrument": "ETH_USDT",
+      "EntryPrice": 2469.18,
+      "Quantity": 0.0064798840100762196356685215,
+      "CostUsd": 16.064,
+      "OpenFeeUsd": 0.064,
+      "OpenedAt": "2026-08-26T11:00:07.6954858+00:00",
+      "StopLossPrice": 2395.1046,
+      "TakeProfitPrice": 2954.15
+    },
+    "BTC_USDT": {
+      "Instrument": "BTC_USDT",
+      "EntryPrice": 78769.93,
+      "Quantity": 0.0001609444235466083361816831,
+      "CostUsd": 12.728291300563317139961432447,
+      "OpenFeeUsd": 0.0507103239066267615137905675,
+      "OpenedAt": "2026-08-27T06:40:17.5875016+00:00",
+      "StopLossPrice": 76406.8321,
+      "TakeProfitPrice": 98121.7
+    },
+    "ADA_USDT": {
+      "Instrument": "ADA_USDT",
+      "EntryPrice": 0.19583,
+      "Quantity": 98.671849271887134938417269,
+      "CostUsd": 19.400199875885312265530214803,
+      "OpenFeeUsd": 0.0772916329716546305399610152,
+      "OpenedAt": "2026-08-31T07:02:19.6812872+00:00",
+      "StopLossPrice": 0.1899551,
+      "TakeProfitPrice": 0.227928843777785298462152629
+    },
+    "XRP_USDT": {
+      "Instrument": "XRP_USDT",
+      "EntryPrice": 1.3676,
+      "Quantity": 14.116500754055350131590610908,
+      "CostUsd": 19.382949336971081227323172756,
+      "OpenFeeUsd": 0.0772229057249843873598532779,
+      "OpenedAt": "2026-08-31T07:15:56.7121481+00:00",
+      "StopLossPrice": 1.326572,
+      "TakeProfitPrice": 1.5919554775863434158289044118
+    }
+  },
+  "ClosedTrades": [
+    {
+      "OpenedAt": "2026-08-26T11:00:08.709664+00:00",
+      "ClosedAt": "2026-08-26T14:48:31.7264655+00:00",
+      "Instrument": "ADA_USDT",
+      "EntryPrice": 0.21188,
+      "ExitPrice": 0.20540,
+      "Quantity": 94.45912295008458453114052548,
+      "PnlUsd": -0.612095116716548107761790604,
+      "PnlFraction": -0.0305833490655087785538984331,
+      "FeesUsd": 0,
+      "Reason": 1
+    },
+    {
+      "OpenedAt": "2026-08-27T06:47:37.5270285+00:00",
+      "ClosedAt": "2026-08-29T10:16:29.0379218+00:00",
+      "Instrument": "ADA_USDT",
+      "EntryPrice": 0.21006,
+      "ExitPrice": 0.20047,
+      "Quantity": 95.56517487256787775289683328,
+      "PnlUsd": -1.073399511989667111065867575,
+      "PnlFraction": -0.0532579763778362698876018347,
+      "FeesUsd": 0.1569294849617411634155869479,
+      "Reason": 1
+    },
+    {
+      "OpenedAt": "2026-08-28T15:00:54.5591095+00:00",
+      "ClosedAt": "2026-08-29T10:16:29.6906751+00:00",
+      "Instrument": "XRP_USDT",
+      "EntryPrice": 1.4347,
+      "ExitPrice": 1.3857,
+      "Quantity": 14.161755495378176560394130185,
+      "PnlUsd": -0.853693280070189088143054798,
+      "PnlFraction": -0.0418494697587984994572487217,
+      "FeesUsd": 0.1597672607966584366837424191,
+      "Reason": 1
+    },
+    {
+      "OpenedAt": "2026-08-30T10:47:39.097584+00:00",
+      "ClosedAt": "2026-08-30T23:24:03.0896211+00:00",
+      "Instrument": "ADA_USDT",
+      "EntryPrice": 0.20163,
+      "ExitPrice": 0.19529,
+      "Quantity": 97.94987884642116769697609927,
+      "PnlUsd": -0.776515295533196162727963484,
+      "PnlFraction": -0.0391613133835732801571574142,
+      "FeesUsd": 0.1555130636468859595291350133,
+      "Reason": 1
+    },
+    {
+      "OpenedAt": "2026-08-30T12:12:40.540362+00:00",
+      "ClosedAt": "2026-08-30T23:36:35.5837582+00:00",
+      "Instrument": "XRP_USDT",
+      "EntryPrice": 1.4001,
+      "ExitPrice": 1.3570,
+      "Quantity": 14.158893273159389662005728581,
+      "PnlUsd": -0.766398238646880707380910879,
+      "PnlFraction": -0.0385063559774188013320619387,
+      "FeesUsd": 0.1561499385737110129484639770,
+      "Reason": 1
+    }
+  ],
+  "WeekStartedAt": "2026-08-26T08:27:27.4218469+00:00",
+  "WeekStartEquityUsd": 100,
+  "CumulativeFeesUsd": 0.9775846105822623519905332179
+}

@@ -1,0 +1,182 @@
+﻿using BotCripto.Services;
+using Newtonsoft.Json.Linq;
+
+// Log su file di tutto l'output (Logs/cycles_yyyy-MM-dd.log; i backtest in Logs/backtest_yyyy-MM-dd.log)
+var logPrefix = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault()?.StartsWith("--backtest", StringComparison.OrdinalIgnoreCase) == true ? "backtest" : "cycles";
+FileLogger.Install(Path.Combine(AppContext.BaseDirectory, "Logs"), logPrefix);
+Console.WriteLine($"▶️  Avvio Bot 10 - {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC - eseguibile in {AppContext.BaseDirectory}");
+
+// Qualsiasi errore che chiude il processo finisce nel log, così si sa perché il bot si è fermato
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+    Console.WriteLine($"💥 ERRORE FATALE, il bot si chiude: {e.ExceptionObject}");
+TaskScheduler.UnobservedTaskException += (_, e) =>
+{
+    Console.WriteLine($"⚠️  Eccezione non gestita in un task: {e.Exception}");
+    e.SetObserved();
+};
+AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+    Console.WriteLine($"⏹️  Bot 10 terminato - {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+Console.CancelKeyPress += (_, _) =>
+    Console.WriteLine("⏹️  Chiusura richiesta con Ctrl+C");
+
+Console.WriteLine(@"
+╔════════════════════════════════════════════════════════╗
+║          🤖 BOT 10 - SMA 200 - VERSIONE 1.0            ║
+║                 Backtest + Live Trading                ║
+╚════════════════════════════════════════════════════════╝
+");
+
+// Importo per trade, timeframe e R:R sono letti da appsettings.json (TradingSettings / MarketMonitoring).
+// Nessun importo totale investibile: il capitale disponibile è illimitato.
+var appSettings = JObject.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "appsettings.json")));
+var tradingSettings = appSettings["TradingSettings"] ?? throw new InvalidOperationException("appsettings.json: sezione TradingSettings mancante");
+var marketSettings = appSettings["MarketMonitoring"] ?? throw new InvalidOperationException("appsettings.json: sezione MarketMonitoring mancante");
+decimal CapitalPerTrade = tradingSettings.Value<decimal?>("CapitalPerTrade") ?? throw new InvalidOperationException("appsettings.json: CapitalPerTrade mancante");
+decimal RewardRiskRatio =tradingSettings.Value<decimal?>("RewardRiskRatio") ?? throw new InvalidOperationException("appsettings.json: RewardRiskRatio mancante");
+string Timeframe = marketSettings.Value<string>("TimeframeForCandlesticks") ?? throw new InvalidOperationException("appsettings.json: TimeframeForCandlesticks mancante");
+
+// Check se è backtest mode
+var cmdArgs = Environment.GetCommandLineArgs();
+bool isBacktestMode = cmdArgs.Length > 1 && cmdArgs[1].ToLower() == "--backtest";
+bool isRealBacktestMode = cmdArgs.Length > 1 && cmdArgs[1].ToLower() == "--backtest-real";
+
+if (isBacktestMode)
+{
+    await RunBacktestAsync();
+}
+else if (isRealBacktestMode)
+{
+    // --backtest-real [giorni | yyyy-MM-dd yyyy-MM-dd] [--timeframe 1h|2h|4h|6h|12h|1d] [--symbols file] [--rr rapporto]
+    // --rr: take profit come multiplo della distanza dello stop (default RewardRiskRatio)
+    // --symbols: elenco di simboli da usare (uno per riga); se il file non esiste viene creato con
+    //            l'elenco scaricato, così più backtest possono usare esattamente lo stesso paniere.
+    var positional = new List<string>();
+    var timeframe = Timeframe;
+    string? symbolsFile = null;
+    var rewardRisk = RewardRiskRatio;
+    for (int a = 2; a < cmdArgs.Length; a++)
+    {
+        if (cmdArgs[a] == "--timeframe" && a + 1 < cmdArgs.Length)
+            timeframe = cmdArgs[++a];
+        else if (cmdArgs[a] == "--symbols" && a + 1 < cmdArgs.Length)
+            symbolsFile = cmdArgs[++a];
+        else if (cmdArgs[a] == "--rr" && a + 1 < cmdArgs.Length)
+            rewardRisk = decimal.Parse(cmdArgs[++a], System.Globalization.CultureInfo.InvariantCulture);
+        else
+            positional.Add(cmdArgs[a]);
+    }
+
+    var endDate = DateTime.UtcNow;
+    var startDate = endDate.AddDays(-30);
+    var dateStyle = System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal;
+    if (positional.Count >= 2
+        && DateTime.TryParseExact(positional[0], "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, dateStyle, out var fromDate)
+        && DateTime.TryParseExact(positional[1], "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, dateStyle, out var toDate))
+    {
+        startDate = fromDate;
+        endDate = toDate.AddDays(1).AddTicks(-1); // data finale inclusa
+    }
+    else if (positional.Count >= 1 && int.TryParse(positional[0], out var parsedDays))
+    {
+        startDate = endDate.AddDays(-parsedDays);
+    }
+    await RunRealBacktestAsync(startDate, endDate, timeframe, symbolsFile, rewardRisk);
+}
+else
+{
+    await RunLiveAsync();
+}
+
+async Task RunLiveAsync()
+{
+    var scheduler = new BotSchedulerService(Timeframe, RewardRiskRatio, CapitalPerTrade);
+
+    Console.WriteLine("Strategia Principale Attiva:");
+    Console.WriteLine("  ⭐ EMA Ribbon Trend Following + Candle Confirmation");
+    Console.WriteLine($"     • Configurazione: Swing trading long su candele {Timeframe}");
+    Console.WriteLine("     • Filtri: Volume, Candle Body, RSI, Breakout Confirmation");
+    Console.WriteLine("     • Modalità: paper trading (segnali e trade simulati, nessun ordine reale)");
+    Console.WriteLine("\nImpostazioni:");
+    Console.WriteLine("  • Capitale investibile: illimitato");
+    Console.WriteLine("  • Intervallo Monitoraggio: 30 minuti");
+    Console.WriteLine("  • Max Crypto: 500");
+    Console.WriteLine($"  • Importo per trade: €{CapitalPerTrade:F2}");
+    Console.WriteLine($"  • Take profit: {RewardRiskRatio}x la distanza dello stop");
+    Console.WriteLine("  • Report Settimanale: Lunedì 00:00");
+    Console.WriteLine("  • Tracking Metriche: Ogni 10 cicli");
+
+    try
+    {
+        await scheduler.StartAsync();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ Errore: {ex.Message}");
+    }
+    finally
+    {
+        scheduler.Stop();
+    }
+}
+
+async Task RunRealBacktestAsync(DateTime startDate, DateTime endDate, string timeframe, string? symbolsFile, decimal rewardRisk)
+{
+    Console.WriteLine($"\n🔍 MODALITA' BACKTEST SU DATI STORICI REALI ATTIVATA ({startDate:yyyy-MM-dd} → {endDate:yyyy-MM-dd}, {timeframe}, capitale illimitato, €{CapitalPerTrade:F2} per trade, R:R {rewardRisk})\n");
+
+    var backtestService = new BacktestService(rewardRisk, CapitalPerTrade);
+
+    try
+    {
+        List<string> symbols;
+        if (symbolsFile != null && File.Exists(symbolsFile))
+        {
+            symbols = File.ReadAllLines(symbolsFile).Select(s => s.Trim()).Where(s => s.Length > 0).Distinct().ToList();
+            Console.WriteLine($"📄 Simboli letti da {symbolsFile}: {symbols.Count}");
+        }
+        else
+        {
+            var dataService = new CryptoDataService();
+            var cryptos = await dataService.GetLargeCapCryptocurrenciesAsync();
+            symbols = cryptos.Select(c => c.Symbol).ToList();
+            if (symbolsFile != null)
+            {
+                File.WriteAllLines(symbolsFile, symbols);
+                Console.WriteLine($"📄 Elenco simboli salvato in {symbolsFile}");
+            }
+        }
+
+        var result = await backtestService.RunBacktestAsync(symbols, startDate, endDate, timeframe);
+        backtestService.PrintBacktestReport(result);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ Errore nel backtest: {ex.Message}\n{ex.StackTrace}");
+    }
+}
+
+async Task RunBacktestAsync()
+{
+    Console.WriteLine("\n🔍 MODALITA' BACKTEST SINTETICO ATTIVATA\n");
+
+    var backtest = new SyntheticBacktest(initialCapital: 100m);
+
+    try
+    {
+        // Esegui backtest su 365 giorni (1 anno)
+        // con 20 simboli, 55% win-rate atteso, 8 trade per simbolo
+        var result = backtest.RunBacktest(
+            numSymbols: 20,
+            daysOfData: 365,
+            expectedWinRate: 0.55m,
+            tradesPerSymbol: 8
+        );
+
+        // Stampa report dettagliato
+        backtest.PrintBacktestReport(result);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ Errore nel backtest: {ex.Message}\n{ex.StackTrace}");
+    }
+}
+

@@ -7,6 +7,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>Bot 10</AssemblyName>
+    <!-- PaperTradingBot e ib_ftsemib_bot sono progetti separati: i loro file non fanno parte del Bot 10 -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);PaperTradingBot\**;ib_ftsemib_bot\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

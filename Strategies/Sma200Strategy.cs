@@ -21,7 +21,19 @@ public class Sma200Strategy
     private const bool AllowShort = true;
     public const int MinCandles = SmaPeriod + 20;
 
-    public AnalysisResult Analyze(string symbol, List<Candle> candles)
+    private const int BtcRegimeEmaPeriod = 50;
+
+    // Regime di mercato: true se BTC chiude sopra la sua EMA50, false se sotto, null se dati insufficienti.
+    public static bool? IsBtcBullish(List<Candle> btcCandles)
+    {
+        var ema = TechnicalIndicators.CalculateEMA(btcCandles.Select(c => c.Close).ToList(), BtcRegimeEmaPeriod);
+        if (ema.Count == 0)
+            return null;
+        return btcCandles.Last().Close > ema.Last();
+    }
+
+    // btcBullish: filtro di mercato, il long è consentito solo con BTC rialzista (sopra la EMA50); lo short non è filtrato.
+    public AnalysisResult Analyze(string symbol, List<Candle> candles, bool? btcBullish)
     {
         var result = new AnalysisResult
         {
@@ -62,6 +74,13 @@ public class Sma200Strategy
         if (!crossUp && !crossDown)
         {
             result.Rejection = RejectionReason.NoBreakout;
+            return result;
+        }
+
+        // Filtro regime BTC solo sul lato long
+        if (crossUp && btcBullish != true)
+        {
+            result.Rejection = RejectionReason.AgainstBtcRegime;
             return result;
         }
 

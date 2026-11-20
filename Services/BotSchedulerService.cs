@@ -181,6 +181,10 @@ public class BotSchedulerService
             {
                 Console.WriteLine($"🕯️  Candela {_timeframe} chiusa alle {lastCloseEnd:yyyy-MM-dd HH:mm} UTC: ricerca segnali");
 
+                // Regime di mercato BTC (sopra/sotto la EMA50) sulla candela appena chiusa: filtro del lato long
+                var btcBullish = Sma200Strategy.IsBtcBullish(ClosedCandles(await GetCandlesCachedAsync("BTC"), now));
+                Console.WriteLine($"₿ Regime BTC: {(btcBullish == null ? "sconosciuto (nessun long)" : btcBullish.Value ? "rialzista (long consentiti)" : "ribassista (nessun long)")}");
+
                 _lastScannedCandle = lastClosedTime;
                 var cryptos = await _dataService.GetLargeCapCryptocurrenciesAsync();
                 cycle.CryptosAnalyzed = cryptos.Count;
@@ -226,7 +230,7 @@ public class BotSchedulerService
                         }
 
                         // ✅ STRATEGIA PRINCIPALE: SMA 200
-                        var smaResult = _smaStrategy.Analyze(crypto.Symbol, candles);
+                        var smaResult = _smaStrategy.Analyze(crypto.Symbol, candles, btcBullish);
 
                         if (smaResult.IsSignal)
                             candidates.Add((crypto, smaResult, candles));
@@ -431,6 +435,7 @@ public class BotSchedulerService
         RejectionReason.ProfitBelowCommissions => "Risk Manager: profitto non copre commissioni",
         RejectionReason.RiskRewardTooLow => "Risk Manager: rapporto rischio/rendimento insufficiente",
         RejectionReason.StopLossError => "Stop non valido o troppo largo",
+        RejectionReason.AgainstBtcRegime => "Strategia: long contro il regime BTC",
         _ => "Scarto non classificato"
     };
 

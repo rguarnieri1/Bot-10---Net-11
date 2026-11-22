@@ -182,9 +182,10 @@ public class BotSchedulerService
             {
                 Console.WriteLine($"🕯️  Candela {_timeframe} chiusa alle {lastCloseEnd:yyyy-MM-dd HH:mm} UTC: ricerca segnali");
 
-                // Regime di mercato BTC (sopra/sotto la EMA50) sulla candela appena chiusa: filtro del lato long
+                // Regime di mercato BTC (sopra/sotto la EMA50) sulla candela appena chiusa: solo informativo,
+                // il filtro sui long è disattivato nella strategia (BtcRegimeFilterOnLong)
                 var btcBullish = Sma200Strategy.IsBtcBullish(ClosedCandles(await GetCandlesCachedAsync("BTC"), now));
-                Console.WriteLine($"₿ Regime BTC: {(btcBullish == null ? "sconosciuto (nessun long)" : btcBullish.Value ? "rialzista (long consentiti)" : "ribassista (nessun long)")}");
+                Console.WriteLine($"₿ Regime BTC: {(btcBullish == null ? "sconosciuto" : btcBullish.Value ? "rialzista" : "ribassista")} (non filtra i long)");
 
                 _lastScannedCandle = lastClosedTime;
                 var cryptos = await _dataService.GetLargeCapCryptocurrenciesAsync();
@@ -196,9 +197,26 @@ public class BotSchedulerService
                 var registeredSignals = allTrades.Where(t => t.SignalCandleTime == lastClosedTime).Select(t => t.Symbol).ToHashSet();
 
                 // Scarica in parallelo (con limite) solo i simboli che verranno analizzati; gli errori emergono nel loop per simbolo
-                var toFetch = cryptos.Where(c => !openSymbols.Contains(c.Symbol) && !registeredSignals.Contains(c.Symbol)).Select(c => GetCandlesCachedAsync(c.Symbol)).ToList();
+                // (anche quelli con posizione aperta: servono per la classifica di liquidità)
+                var toFetch = cryptos.Select(c => GetCandlesCachedAsync(c.Symbol)).ToList();
                 try { await Task.WhenAll(toFetch); } catch { /* gestito per simbolo più sotto */ }
                 var candidates = new List<(Cryptocurrency crypto, AnalysisResult analysis, List<Candle> candles)>();
+
+                // Classifica di liquidità: volume medio in USDT delle 20 candele precedenti a quella del segnale;
+                // si valutano solo i primi TopLiquidSymbols simboli (come nel backtest)
+                var dollarVolumes = new Dictionary<string, decimal>();
+                foreach (var c in cryptos)
+                {
+                    try
+                    {
+                        var closed = ClosedCandles(await GetCandlesCachedAsync(c.Symbol), now);
+                        if (closed.Count > 0 && closed.Last().Time == lastClosedTime)
+                            dollarVolumes[c.Symbol] = Sma200Strategy.AvgDollarVolume(closed);
+                    }
+                    catch { /* il simbolo verrà scartato più sotto */ }
+                }
+                var liquidityThreshold = Sma200Strategy.TopLiquidityThreshold(dollarVolumes.Values);
+                Console.WriteLine($"💧 Filtro liquidità: primi {Sma200Strategy.TopLiquidSymbols} simboli per volume medio 20 candele (soglia ≈ {liquidityThreshold:N0} USDT)");
 
                 foreach (var crypto in cryptos)
                 {
@@ -230,6 +248,12 @@ public class BotSchedulerService
                             continue;
                         }
 
+                        if (!dollarVolumes.TryGetValue(crypto.Symbol, out var dollarVolume) || dollarVolume < liquidityThreshold)
+                        {
+                            CountRejection("Liquidità: fuori dai primi simboli per volume");
+                            continue;
+                        }
+
                         // ✅ STRATEGIA PRINCIPALE: SMA 200
                         var smaResult = _smaStrategy.Analyze(crypto.Symbol, candles, btcBullish);
 
@@ -249,6 +273,19 @@ public class BotSchedulerService
                 foreach (var (crypto, smaResult, candles) in candidates.OrderByDescending(c => c.analysis.Indicators.GetValueOrDefault("SignalStrength")))
                 {
                     var isLong = smaResult.Signal.Contains("BUY");
+
+                    // Tetto alle posizioni aperte (come nel backtest): i segnali più forti hanno la precedenza
+                    if (openTrades.Count >= Sma200Strategy.MaxOpenPositions)
+                    {
+                        var capRecord = SignalRecord.FromAnalysis(smaResult, _timeframe, lastClosedTime!.Value, candles.Last().Close, isLong);
+                        capRecord.Accepted = false;
+                        capRecord.RejectionReason = RejectionLabel(RejectionReason.MaxConcurrentTrades);
+                        _reportingService.SaveSignal(capRecord);
+                        signalsFiltered++;
+                        CountRejection(RejectionLabel(RejectionReason.MaxConcurrentTrades));
+                        continue;
+                    }
+
                     // Ingresso alla chiusura della candela del segnale (come nel backtest), non al prezzo live:
                     // lo stop della strategia è calcolato su quella candela e i controlli stop/target partono dalla successiva.
                     var entryPrice = candles.Last().Close;
@@ -389,25 +426,40 @@ public class BotSchedulerService
         {
             try
             {
-                var candles = await getCandlesAsync(trade.Symbol);
-                foreach (var candle in candles.Where(c => c.Time > trade.SignalCandleTime))
+                var candles = (await getCandlesAsync(trade.Symbol)).OrderBy(c => c.Time).ToList();
+                // Con il trailing lo stop si rigioca dalla candela del segnale: parte dallo stop iniziale salvato nel trade
+                // (mai sovrascritto) e a ogni candela chiusa segue il prezzo; così non serve persistere lo stop aggiornato.
+                var stop = trade.StopLoss;
+                for (int i = 0; i < candles.Count; i++)
                 {
-                    bool hitStop = trade.IsLong ? candle.Low <= trade.StopLoss : candle.High >= trade.StopLoss;
-                    bool hitTarget = trade.IsLong ? candle.High >= trade.TargetPrice : candle.Low <= trade.TargetPrice;
-                    if (!hitStop && !hitTarget)
+                    var candle = candles[i];
+                    if (candle.Time <= trade.SignalCandleTime)
                         continue;
+                    // La candela ancora in formazione non muove lo stop, ma può comunque toccarlo
+                    bool candleClosed = candle.Time + _timeframeSpan <= DateTime.UtcNow;
+
+                    bool hitStop = trade.IsLong ? candle.Low <= stop : candle.High >= stop;
+                    bool hitTarget = trade.TargetPrice > 0 && (trade.IsLong ? candle.High >= trade.TargetPrice : candle.Low <= trade.TargetPrice);
+                    if (!hitStop && !hitTarget)
+                    {
+                        if (Sma200Strategy.UseTrailingStop && candleClosed)
+                            stop = Sma200Strategy.TrailStop(stop, trade.IsLong, candles, i);
+                        continue;
+                    }
 
                     // Gap oltre lo stop: l'uscita avviene all'apertura della candela, non al prezzo di stop
                     var exitPrice = hitStop
-                        ? (trade.IsLong ? Math.Min(candle.Open, trade.StopLoss) : Math.Max(candle.Open, trade.StopLoss))
+                        ? (trade.IsLong ? Math.Min(candle.Open, stop) : Math.Max(candle.Open, stop))
                         : trade.TargetPrice;
+                    var trailed = stop != trade.StopLoss;
                     var profitCalc = _riskManager.CalculateProfitAndTaxes(
                         trade.EntryPrice, exitPrice, trade.PositionSize, trade.IsLong);
                     var profit = profitCalc.NetProfitBeforeTax; // tasse sul saldo netto del periodo, non per trade
                     var profitPercent = profit / (trade.EntryPrice * trade.PositionSize) * 100;
 
-                    _reportingService.ClosePaperTrade(trade, exitPrice, profit, profitPercent, hitStop ? "Stop loss" : "Target");
-                    Console.WriteLine($"   {(profit > 0 ? "✅" : "❌")} Chiuso {trade.Symbol} {(trade.IsLong ? "LONG" : "SHORT")} per {(hitStop ? "stop loss" : "target")}: €{profit:F2} ({profitPercent:F2}%)");
+                    var reason = hitStop ? (trailed ? "Trailing stop" : "Stop loss") : "Target";
+                    _reportingService.ClosePaperTrade(trade, exitPrice, profit, profitPercent, reason);
+                    Console.WriteLine($"   {(profit > 0 ? "✅" : "❌")} Chiuso {trade.Symbol} {(trade.IsLong ? "LONG" : "SHORT")} per {reason.ToLowerInvariant()}: €{profit:F2} ({profitPercent:F2}%)");
                     closed++;
                     break;
                 }

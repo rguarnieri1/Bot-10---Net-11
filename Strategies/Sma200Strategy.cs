@@ -6,7 +6,8 @@ namespace BotCripto.Strategies;
 //  LONG : la candela chiude sopra la SMA200 dopo che la precedente aveva chiuso sotto o sulla SMA200 (incrocio al rialzo),
 //         candela rialzista, chiusura almeno MinCrossPercent sopra la SMA200, RSI14 tra 50 e RsiMaxLong
 //  SHORT: specchio del long (incrocio al ribasso, candela ribassista, chiusura sotto la SMA200, RSI14 tra RsiMinShort e 50)
-// Stop oltre l'estremo dello swing recente (più un buffer ATR); il target lo calcola il RiskManager (R:R configurato).
+// Stop oltre l'estremo dello swing recente (più un buffer ATR); poi trailing stop ATR (vedi UseTrailingStop),
+// oppure target a R:R configurato (RiskManager) se il trailing è disattivato.
 public class Sma200Strategy
 {
     private const int SmaPeriod = 200;
@@ -21,6 +22,63 @@ public class Sma200Strategy
     private const bool AllowShort = true;
     public const int MinCandles = SmaPeriod + 20;
 
+    // Filtro regime BTC sui long: disattivato (backtest 4 anni su 1d: senza filtro il P&L e il profit factor sono migliori)
+    private const bool BtcRegimeFilterOnLong = false;
+
+    // Gestione dell'uscita: trailing stop a ATR invece del target fisso a R:R (backtest 4 anni su 1d: PF 1,63 -> 1,99).
+    // Lo stop iniziale è quello dello swing; a ogni candela chiusa si alza (long) / abbassa (short) a close -/+ TrailAtrMultiple × ATR.
+    public const bool UseTrailingStop = true;
+    public const decimal TrailAtrMultiple = 3m;
+    // Numero massimo di posizioni aperte contemporaneamente (riduce i grappoli di trade correlati)
+    public const int MaxOpenPositions = 15;
+
+    // Solo i primi N simboli per volume medio in USDT (20 candele precedenti a quella del segnale): meno slippage sui token illiquidi
+    // (backtest 4 anni su 1d: top 50 = PF 2,49, tutti gli anni positivi, regge allo stress slippage 0,5%).
+    public const int TopLiquidSymbols = 50;
+    private const int VolumeAveragePeriod = 20;
+
+    // Volume medio in USDT delle VolumeAveragePeriod candele che precedono l'ultima (0 se i dati non bastano)
+    public static decimal AvgDollarVolume(List<Candle> candles)
+    {
+        if (candles.Count < VolumeAveragePeriod + 1)
+            return 0m;
+        decimal sum = 0m;
+        for (int i = candles.Count - 1 - VolumeAveragePeriod; i < candles.Count - 1; i++)
+            sum += candles[i].Volume * candles[i].Close;
+        return sum / VolumeAveragePeriod;
+    }
+
+    // Soglia di volume per entrare nella classifica dei primi TopLiquidSymbols (0 = nessun filtro / dati insufficienti)
+    public static decimal TopLiquidityThreshold(IEnumerable<decimal> dollarVolumes)
+    {
+        var sorted = dollarVolumes.Where(v => v > 0).OrderByDescending(v => v).ToList();
+        return TopLiquidSymbols > 0 && sorted.Count >= TopLiquidSymbols ? sorted[TopLiquidSymbols - 1] : 0m;
+    }
+
+    // Prossimo livello dello stop dopo una candela chiusa (lo stop non si allontana mai dal prezzo)
+    public static decimal TrailStop(decimal currentStop, bool isLong, List<Candle> candles, int idx)
+    {
+        if (idx < AtrPeriod)
+            return currentStop;
+        var atr = AtrAt(candles, idx, AtrPeriod);
+        return isLong
+            ? Math.Max(currentStop, candles[idx].Close - TrailAtrMultiple * atr)
+            : Math.Min(currentStop, candles[idx].Close + TrailAtrMultiple * atr);
+    }
+
+    // ATR semplice (media dei true range) delle ultime `period` candele fino a idx incluso
+    public static decimal AtrAt(List<Candle> candles, int idx, int period)
+    {
+        decimal sum = 0m;
+        for (int i = idx - period + 1; i <= idx; i++)
+        {
+            var c = candles[i];
+            var prevClose = candles[i - 1].Close;
+            sum += Math.Max(c.High - c.Low, Math.Max(Math.Abs(c.High - prevClose), Math.Abs(c.Low - prevClose)));
+        }
+        return sum / period;
+    }
+
     private const int BtcRegimeEmaPeriod = 50;
 
     // Regime di mercato: true se BTC chiude sopra la sua EMA50, false se sotto, null se dati insufficienti.
@@ -32,7 +90,7 @@ public class Sma200Strategy
         return btcCandles.Last().Close > ema.Last();
     }
 
-    // btcBullish: filtro di mercato, il long è consentito solo con BTC rialzista (sopra la EMA50); lo short non è filtrato.
+    // btcBullish: filtro di mercato (BTC sopra la EMA50), applicato ai long solo se BtcRegimeFilterOnLong è attivo; lo short non è filtrato.
     public AnalysisResult Analyze(string symbol, List<Candle> candles, bool? btcBullish)
     {
         var result = new AnalysisResult
@@ -78,7 +136,7 @@ public class Sma200Strategy
         }
 
         // Filtro regime BTC solo sul lato long
-        if (crossUp && btcBullish != true)
+        if (BtcRegimeFilterOnLong && crossUp && btcBullish != true)
         {
             result.Rejection = RejectionReason.AgainstBtcRegime;
             return result;

@@ -63,6 +63,21 @@ public class RiskManager
         // 2️⃣ Position size (in unità dell'asset): importo fisso per trade in € convertito in unità
         var positionSize = _positionValue / entryPrice;
 
+        // Con il trailing stop non c'è target (TargetPrice = 0) né controllo R:R: l'uscita segue il prezzo.
+        if (Strategies.Sma200Strategy.UseTrailingStop)
+        {
+            result.IsValid = true;
+            result.PositionSize = positionSize;
+            result.StopLossPrice = stopLossPrice;
+            result.StopLossPercent = stopLossPercent;
+            result.TargetPrice = 0m;
+            result.TargetPercent = 0m;
+            result.RiskAmount = positionSize * riskPerUnit;
+            result.Commissions = entryPrice * positionSize * (_buyCommissionPercent + _sellCommissionPercent) / 100;
+            result.Reason = "✅ Valid | trailing stop";
+            return result;
+        }
+
         // 3️⃣ Target a distanza rischio × R:R (2:1 di default), nella direzione del trade
         var profitPerUnit = riskPerUnit * _minRewardRatio;
         var targetPrice = isLong ? entryPrice + profitPerUnit : entryPrice - profitPerUnit;

@@ -107,7 +107,9 @@ async Task RunLiveAsync()
     Console.WriteLine("  • Intervallo Monitoraggio: 20 minuti");
     Console.WriteLine("  • Max Crypto: 500");
     Console.WriteLine($"  • Importo per trade: €{CapitalPerTrade:F2}");
-    Console.WriteLine($"  • Take profit: {RewardRiskRatio}x la distanza dello stop");
+    Console.WriteLine(BotCripto.Strategies.Sma200Strategy.UseTrailingStop
+        ? $"  • Uscita: trailing stop {BotCripto.Strategies.Sma200Strategy.TrailAtrMultiple}x ATR (max {BotCripto.Strategies.Sma200Strategy.MaxOpenPositions} posizioni aperte)"
+        : $"  • Take profit: {RewardRiskRatio}x la distanza dello stop");
     Console.WriteLine("  • Report Settimanale: Lunedì 00:00");
     Console.WriteLine("  • Tracking Metriche: Ogni 10 cicli");
 

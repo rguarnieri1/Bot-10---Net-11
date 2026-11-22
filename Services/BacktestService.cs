@@ -155,20 +155,37 @@ public class BacktestService
                 var pos = openPositions[symbol];
                 var candle = candlesBySymbol[symbol][idx];
                 bool hitStop = pos.IsLong ? candle.Low <= pos.StopLoss : candle.High >= pos.StopLoss;
-                bool hitTarget = pos.IsLong ? candle.High >= pos.Target : candle.Low <= pos.Target;
+                bool hitTarget = pos.Target > 0 && (pos.IsLong ? candle.High >= pos.Target : candle.Low <= pos.Target);
 
                 // Se in una stessa candela vengono toccati entrambi, assumiamo lo stop loss (ipotesi conservativa)
                 if (hitStop || hitTarget)
+                {
                     ClosePosition(symbol, hitStop ? pos.StopLoss : pos.Target, time, !hitStop);
+                    continue;
+                }
+
+                // Trailing stop: dopo la chiusura della candela lo stop segue il prezzo (ATR × moltiplicatore)
+                if (Sma200Strategy.UseTrailingStop)
+                    pos.StopLoss = Sma200Strategy.TrailStop(pos.StopLoss, pos.IsLong, candlesBySymbol[symbol], idx);
             }
 
             // b) Nuovi segnali (solo dentro la finestra richiesta), dal più forte al più debole:
             if (time >= startDate)
             {
                 var candidates = new List<(string symbol, Candle candle, AnalysisResult analysis)>();
+
+                // Classifica di liquidità alla candela del segnale: si valutano solo i primi TopLiquidSymbols simboli per volume
+                var dollarVolumes = new Dictionary<string, decimal>();
+                foreach (var (symbol, candles) in candlesBySymbol)
+                    if (indexBySymbol[symbol].TryGetValue(time, out var vi) && vi >= 20)
+                        dollarVolumes[symbol] = Sma200Strategy.AvgDollarVolume(candles.GetRange(vi - 20, 21));
+                var liquidityThreshold = Sma200Strategy.TopLiquidityThreshold(dollarVolumes.Values);
+
                 foreach (var (symbol, candles) in candlesBySymbol)
                 {
                     if (openPositions.ContainsKey(symbol) || !indexBySymbol[symbol].TryGetValue(time, out var idx) || idx < WarmupCandles)
+                        continue;
+                    if (!dollarVolumes.TryGetValue(symbol, out var dv) || dv < liquidityThreshold)
                         continue;
 
                     var analysis = _strategy.Analyze(symbol, Window(candles, idx), btcRegime.GetValueOrDefault(time));
@@ -178,6 +195,10 @@ public class BacktestService
 
                 foreach (var (symbol, candle, analysis) in candidates.OrderByDescending(c => c.analysis.Indicators.GetValueOrDefault("SignalStrength")))
                 {
+                    // Tetto alle posizioni aperte: i segnali più forti hanno la precedenza
+                    if (openPositions.Count >= Sma200Strategy.MaxOpenPositions)
+                        break;
+
                     totalSignals++;
 
                     var isLong = analysis.Signal.Contains("BUY");

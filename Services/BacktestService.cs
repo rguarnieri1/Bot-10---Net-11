@@ -32,6 +32,9 @@ public class BacktestService
     private readonly Sma200Strategy _strategy;
 
     // Capitale investibile illimitato: ogni trade investe un importo fisso (capitalPerTrade), senza tetto totale
+    // true = le posizioni ancora aperte a fine periodo sono escluse (si contano solo le operazioni chiuse da stop/target)
+    public bool ClosedOnly { get; set; }
+
     public BacktestService(decimal rewardRiskRatio, decimal capitalPerTrade)
     {
         _dataService = new CryptoDataService();
@@ -75,6 +78,7 @@ public class BacktestService
         int totalFiltered = 0;
         int candleSetsAnalyzed = 0;
         int closedAtEnd = 0;
+        int excludedOpen = 0;
         int maxConcurrent = 0;
         DateTime? earliestTestedCandle = null;
         DateTime? latestTestedCandle = null;
@@ -259,10 +263,18 @@ public class BacktestService
         // testata (mark-to-market), altrimenti le perdite/guadagni non realizzati sparirebbero dalle metriche.
         foreach (var symbol in openPositions.Keys.ToList())
         {
+            if (ClosedOnly)
+            {
+                openPositions.Remove(symbol);
+                excludedOpen++;
+                continue;
+            }
             var lastCandle = candlesBySymbol[symbol].Last(c => c.Time <= endDate);
             ClosePosition(symbol, lastCandle.Close, lastCandle.Time, false);
             closedAtEnd++;
         }
+        if (ClosedOnly)
+            Console.WriteLine($"ℹ️  Solo operazioni chiuse: {excludedOpen} posizioni ancora aperte a fine periodo escluse");
 
         backtestResult.Metrics = _riskManager.CalculatePerformanceMetrics(backtestResult.Trades);
 
